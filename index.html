@@ -456,10 +456,19 @@
           <div class="flex items-center justify-between">
             <span class="font-medium text-gray-800">Kecepatan Ketik</span>
             <select id="typing-speed-select" class="bg-[#f2f2f7] rounded-lg px-3 py-1.5 text-sm font-medium">
-              <option value="slow">Lambat</option>
-              <option value="normal" selected>Normal</option>
-              <option value="fast">Cepat</option>
+              <option value="mysterious">Sangat Lambat / Misterius (~1.1 dtk)</option>
+              <option value="slow" selected>Lambat / Natural (~650 ms)</option>
+              <option value="normal">Normal (~420 ms)</option>
+              <option value="custom">Kustom (Atur Slider)</option>
             </select>
+          </div>
+
+          <div class="pt-1">
+            <div class="flex justify-between text-xs font-medium text-gray-700 mb-1">
+              <span>Rata-rata Jeda Antar Angka:</span>
+              <span id="typing-pace-label" class="font-bold text-[#007aff]">650 ms / angka</span>
+            </div>
+            <input type="range" id="typing-pace-range" min="300" max="1600" step="50" value="650" class="w-full accent-[#007aff]" />
           </div>
 
           <div class="flex items-center justify-between border-t border-gray-100 pt-2.5">
@@ -522,14 +531,15 @@
       /* -------------------------------------------------------
          1. STATE & STORAGE
       ------------------------------------------------------- */
-      const STORAGE_KEY = 'ios_magic_phone_seamless_v1';
+      const STORAGE_KEY = 'ios_magic_phone_seamless_v2';
 
       const defaultConfig = {
         targetNumber: '081234567890',
         presets: ['081234567890', '085712345678', '08119876543'],
         triggerMode: 'timer',     // 'timer' | 'top-tap' | 'any-tap' | 'motion'
-        triggerDelay: 2.0,        // seconds
-        typingSpeed: 'normal',    // 'slow' | 'normal' | 'fast'
+        triggerDelay: 2.5,        // seconds
+        typingSpeed: 'slow',      // 'mysterious' | 'slow' | 'normal' | 'custom'
+        typingPaceMs: 650,        // average ms per digit (450ms-900ms default range)
         postAction: 'stay',       // 'stay' | 'call'
         highlightKeys: true,
         soundEnabled: true,
@@ -843,27 +853,27 @@
       }
 
       function getHumanDelay(index, totalLength) {
-        let min = 190;
-        let max = 350;
-        if (config.typingSpeed === 'slow') {
-          min = 380;
-          max = 640;
-        } else if (config.typingSpeed === 'fast') {
-          min = 100;
-          max = 185;
-        }
+        const basePace = Number(config.typingPaceMs) || 650;
+        // Natural human variation (+/- 28% around basePace, e.g., ~470ms to ~830ms at 650ms)
+        const min = Math.max(240, Math.round(basePace * 0.72));
+        const max = Math.round(basePace * 1.28);
 
         let delay = Math.floor(Math.random() * (max - min + 1)) + min;
+
+        // Slight natural hesitation after area/prefix blocks (4th and 8th digit)
         if (index === 4 || index === 8) {
-          delay += config.typingSpeed === 'fast' ? 120 : 280;
+          delay += Math.round(basePace * 0.45);
         }
-        if (index === totalLength - 1 && config.typingSpeed !== 'fast') {
-          delay += 180;
+
+        // Deliberate pause right before the final digit
+        if (index === totalLength - 1) {
+          delay += Math.round(basePace * 0.35);
         }
+
         return delay;
       }
 
-      function simulateKeyVisualPress(digit, durationMs = 140) {
+      function simulateKeyVisualPress(digit, durationMs = 190) {
         if (!config.highlightKeys) return;
         const keyEl = document.querySelector(`.ios-key[data-digit="${CSS.escape(digit)}"]`);
         if (!keyEl) return;
@@ -898,9 +908,9 @@
             currentDigits += ch;
             renderDisplay();
 
-            simulateKeyVisualPress(ch, 140);
-            playDTMF(ch, 120);
-            triggerHaptic(12);
+            simulateKeyVisualPress(ch, 190);
+            playDTMF(ch, 145);
+            triggerHaptic(14);
 
             charIndex++;
             typingTimeoutId = setTimeout(typeNextChar, getHumanDelay(charIndex, rawTarget.length));
@@ -914,8 +924,8 @@
                 setTimeout(() => {
                   callBtn.classList.remove('ghost-pressed');
                   startSimulatedCall(formatPhoneNumber(currentDigits));
-                }, 220);
-              }, 650);
+                }, 250);
+              }, 850);
             }
           }
         }
@@ -984,6 +994,8 @@
       const triggerDelayRange = document.getElementById('trigger-delay-range');
       const delayValueLabel = document.getElementById('delay-value-label');
       const typingSpeedSelect = document.getElementById('typing-speed-select');
+      const typingPaceRange = document.getElementById('typing-pace-range');
+      const typingPaceLabel = document.getElementById('typing-pace-label');
       const postActionSelect = document.getElementById('post-action-select');
       const toggleHighlight = document.getElementById('toggle-highlight');
       const toggleSound = document.getElementById('toggle-sound');
@@ -1020,6 +1032,8 @@
         triggerDelayRange.value = config.triggerDelay;
         delayValueLabel.textContent = `${Number(config.triggerDelay).toFixed(1)} detik`;
         typingSpeedSelect.value = config.typingSpeed;
+        typingPaceRange.value = config.typingPaceMs;
+        typingPaceLabel.textContent = `${config.typingPaceMs} ms / angka`;
         postActionSelect.value = config.postAction;
         toggleHighlight.checked = config.highlightKeys;
         toggleSound.checked = config.soundEnabled;
@@ -1047,6 +1061,34 @@
 
       triggerDelayRange.addEventListener('input', () => {
         delayValueLabel.textContent = `${Number(triggerDelayRange.value).toFixed(1)} detik`;
+      });
+
+      const speedPresetMap = {
+        mysterious: 1100,
+        slow: 650,
+        normal: 420
+      };
+
+      typingSpeedSelect.addEventListener('change', () => {
+        const selected = typingSpeedSelect.value;
+        if (speedPresetMap[selected]) {
+          typingPaceRange.value = speedPresetMap[selected];
+          typingPaceLabel.textContent = `${speedPresetMap[selected]} ms / angka`;
+        }
+      });
+
+      typingPaceRange.addEventListener('input', () => {
+        const val = Number(typingPaceRange.value);
+        typingPaceLabel.textContent = `${val} ms / angka`;
+        if (val === 1100) {
+          typingSpeedSelect.value = 'mysterious';
+        } else if (val === 650) {
+          typingSpeedSelect.value = 'slow';
+        } else if (val === 420) {
+          typingSpeedSelect.value = 'normal';
+        } else {
+          typingSpeedSelect.value = 'custom';
+        }
       });
 
       document.querySelectorAll('.preset-select-btn').forEach((btn) => {
@@ -1077,6 +1119,7 @@
         config.triggerMode = triggerModeSelect.value;
         config.triggerDelay = parseFloat(triggerDelayRange.value) || 0;
         config.typingSpeed = typingSpeedSelect.value;
+        config.typingPaceMs = parseInt(typingPaceRange.value, 10) || 650;
         config.postAction = postActionSelect.value;
         config.highlightKeys = toggleHighlight.checked;
         config.soundEnabled = toggleSound.checked;
